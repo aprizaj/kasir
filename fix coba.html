@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kasir Sembako</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+    header, nav { background: #007bff; color: white; padding: 10px; text-align: center; }
+    .container { display: flex; flex-wrap: wrap; padding: 10px; }
+    .products, .cart { flex: 1; margin: 10px; background: white; padding: 10px; border-radius: 8px; min-width: 300px; }
+    #productList {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .product { border: 1px solid #ddd; padding: 10px; border-radius: 5px; text-align: center; }
+    .product img { width: 100px; height: auto; display: block; margin: 0 auto 5px; }
+    .cart-item { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .cart-item span { flex-grow: 1; }
+    button { padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; }
+    button:disabled { background: #ccc; }
+    .menu { display: flex; justify-content: space-around; background: #007bff; color: white; padding: 10px; position: sticky; bottom: 0; }
+    .menu a { color: white; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Kasir Toko Sembako</h1>
+</header>
+
+<nav class="menu">
+  <a href="#kasir">Kasir</a>
+  <a href="#update">Update Barang</a>
+</nav>
+
+<div class="container">
+  <div class="products" id="kasir">
+    <h2>Daftar Barang</h2>
+    <p><label>Cari Barang: <input type="text" id="searchInput" oninput="searchProducts()"></label></p>
+    <div id="productList"></div>
+  </div>
+
+  <div class="cart">
+    <h2>Keranjang</h2>
+    <div id="cart-items"></div>
+    <hr>
+    <p>Subtotal: Rp <span id="subtotal">0</span></p>
+    <h3>Total: Rp <span id="total">0</span></h3>
+    <button onclick="checkout()">Bayar</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="products" id="update">
+    <h2>Update Barang</h2>
+    <form onsubmit="event.preventDefault(); addProduct()">
+      <p><label>Nama Barang: <input type="text" id="newName" required></label></p>
+      <p><label>Harga (Rp): <input type="number" id="newPrice" required></label></p>
+      <p><label>Gambar URL: <input type="url" id="newImage" required></label></p>
+      <p><button type="submit">Tambah Barang</button></p>
+    </form>
+  </div>
+</div>
+
+<div class="container">
+  <div class="products">
+    <h2>Rekap Transaksi</h2>
+    <p>
+      <button onclick="clearHistory()" style="background:#dc3545;">Hapus Semua Riwayat</button>
+      <button onclick="exportHistory()" style="background:#17a2b8;">Ekspor ke Excel</button>
+    </p>
+    <div id="history"></div>
+  </div>
+</div>
+
+<script>
+  let products = JSON.parse(localStorage.getItem('products')) || [
+    { name: "Minyak Goreng Filma Pouch 1lt", price: 17000, image: "https://via.placeholder.com/100x100?text=Minyak+Filma" },
+    { name: "Susu Ultra Milk Cokelat 1000ml", price: 17500, image: "https://via.placeholder.com/100x100?text=Ultra+Milk" }
+  ];
+
+  let cart = JSON.parse(localStorage.getItem('cart')) || [];
+
+  function saveProducts() {
+    localStorage.setItem('products', JSON.stringify(products));
+  }
+
+  function saveCart() {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }
+
+  function renderProducts(filteredProducts = products) {
+    const productList = document.getElementById('productList');
+    productList.innerHTML = '';
+    filteredProducts.forEach((product, index) => {
+      const div = document.createElement('div');
+      div.className = 'product';
+      div.innerHTML = `
+        <img src="${product.image}" alt="${product.name}">
+        <p>${product.name}</p>
+        <p>Rp ${product.price.toLocaleString()}</p>
+        <button onclick="addToCart('${product.name}', ${product.price})">Tambah</button>
+        <button onclick="deleteProduct(${index})">Hapus</button>
+      `;
+      productList.appendChild(div);
+    });
+  }
+
+  function searchProducts() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = products.filter(p => p.name.toLowerCase().includes(query));
+    renderProducts(filtered);
+  }
+
+  function addToCart(name, price) {
+    const item = cart.find(i => i.name === name);
+    if (item) item.qty++;
+    else cart.push({ name, price, qty: 1 });
+    saveCart();
+    renderCart();
+  }
+
+  function removeFromCart(index) {
+    cart.splice(index, 1);
+    saveCart();
+    renderCart();
+  }
+
+  function renderCart() {
+    const itemsDiv = document.getElementById('cart-items');
+    itemsDiv.innerHTML = '';
+    let subtotal = 0;
+    cart.forEach((item, index) => {
+      const itemTotal = item.price * item.qty;
+      subtotal += itemTotal;
+      itemsDiv.innerHTML += `
+        <div class="cart-item">
+          <span>${item.name} x ${item.qty} = Rp ${itemTotal.toLocaleString()}</span>
+          <button onclick="removeFromCart(${index})">Hapus</button>
+        </div>
+      `;
+    });
+    document.getElementById('subtotal').textContent = subtotal.toLocaleString();
+    document.getElementById('total').textContent = subtotal.toLocaleString();
+  }
+
+  function checkout() {
+    if (cart.length === 0) {
+      alert("Keranjang kosong!");
+      return;
+    }
+
+    const now = new Date();
+    let total = 0;
+    const transaction = {
+      date: now.toLocaleString(),
+      items: cart.map(item => {
+        total += item.price * item.qty;
+        return { ...item };
+      }),
+      total
+    };
+
+    // Simpan ke history
+    let history = JSON.parse(localStorage.getItem('history')) || [];
+    history.push(transaction);
+    localStorage.setItem('history', JSON.stringify(history));
+
+    // Cetak struk
+    let receiptContent = `
+      <html>
+      <head><title>Struk Belanja</title></head>
+      <body>
+        <h2>Struk Belanja - Toko Sembako</h2>
+        <p>Tanggal: ${transaction.date}</p>
+        <hr>
+        <ul style="list-style:none; padding:0;">
+    `;
+
+    transaction.items.forEach(item => {
+      const subtotal = item.price * item.qty;
+      receiptContent += `<li>${item.name} x ${item.qty} = Rp ${subtotal.toLocaleString()}</li>`;
+    });
+
+    receiptContent += `
+        </ul>
+        <hr>
+        <h3>Total: Rp ${total.toLocaleString()}</h3>
+        <p>Terima kasih telah berbelanja!</p>
+        <script>window.onload = function() { window.print(); }<\/script>
+      </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank');
+    win.document.write(receiptContent);
+    win.document.close();
+
+    cart.length = 0;
+    saveCart();
+    renderCart();
+    renderHistory();
+  }
+
+  function addProduct() {
+    const name = document.getElementById('newName').value;
+    const price = parseInt(document.getElementById('newPrice').value);
+    const image = document.getElementById('newImage').value;
+
+    products.push({ name, price, image });
+    saveProducts();
+    renderProducts();
+
+    document.getElementById('newName').value = '';
+    document.getElementById('newPrice').value = '';
+    document.getElementById('newImage').value = '';
+  }
+
+  function deleteProduct(index) {
+    products.splice(index, 1);
+    saveProducts();
+    renderProducts();
+  }
+
+  function renderHistory() {
+    const historyDiv = document.getElementById('history');
+    const history = JSON.parse(localStorage.getItem('history')) || [];
+    historyDiv.innerHTML = '';
+
+    if (history.length === 0) {
+      historyDiv.innerHTML = '<p>Belum ada transaksi.</p>';
+      return;
+    }
+
+    history.slice().reverse().forEach((tx, index) => {
+      const items = tx.items.map(item => 
+        `<li>${item.name} x ${item.qty} = Rp ${(item.price * item.qty).toLocaleString()}</li>`
+      ).join('');
+      historyDiv.innerHTML += `
+        <div style="border:1px solid #ccc; margin-bottom:10px; padding:10px;">
+          <strong>Transaksi ke-${history.length - index}</strong><br>
+          <small>${tx.date}</small>
+          <ul style="list-style:none; padding:0;">${items}</ul>
+          <strong>Total: Rp ${tx.total.toLocaleString()}</strong>
+        </div>
+      `;
+    });
+  }
+
+  function clearHistory() {
+    if (confirm("Yakin ingin menghapus semua riwayat transaksi?")) {
+      localStorage.removeItem('history');
+      renderHistory();
+    }
+  }
+
+  function exportHistory() {
+    const history = JSON.parse(localStorage.getItem('history')) || [];
+    if (history.length === 0) {
+      alert("Tidak ada data transaksi untuk diekspor.");
+      return;
+    }
+
+    let csv = "Tanggal,Barang,Jumlah,Harga Satuan,Subtotal\n";
+    history.forEach(tx => {
+      tx.items.forEach(item => {
+        csv += `"${tx.date}","${item.name}",${item.qty},${item.price},${item.qty * item.price}\n`;
+      });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rekap_transaksi.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  renderProducts();
+  renderCart();
+  renderHistory();
+</script>
+
+</body>
+</html>
